@@ -11,6 +11,7 @@ from tqdm import tqdm
 
 import lpips
 from model import Generator
+import id_loss
 
 
 def noise_regularize(noises):
@@ -119,6 +120,7 @@ if __name__ == "__main__":
         action="store_true",
         help="allow to use distinct latent codes to each layers",
     )
+    parser.add_argument("--identity", type=float, default=0.2, help="weight of identity loss")
     parser.add_argument(
         "files", metavar="FILES", nargs="+", help="path to image files to be projected"
     )
@@ -162,6 +164,8 @@ if __name__ == "__main__":
         model="net-lin", net="vgg", use_gpu=device.startswith("cuda")
     )
 
+    identity = id_loss.IDLoss().to('cuda').eval()
+
     noises_single = g_ema.make_noise()
     noises = []
     for noise in noises_single:
@@ -204,8 +208,10 @@ if __name__ == "__main__":
         p_loss = percept(img_gen, imgs).sum()
         n_loss = noise_regularize(noises)
         mse_loss = F.mse_loss(img_gen, imgs)
+        identity_loss, _, _ = identity(img_gen.cuda(), img.unsqueeze(0).cuda(), img.unsqueeze(0).cuda())
 
-        loss = p_loss + args.noise_regularize * n_loss + args.mse * mse_loss
+        loss = p_loss + args.noise_regularize * n_loss + args.mse * mse_loss + \
+               + identity_loss * args.identity
 
         optimizer.zero_grad()
         loss.backward()
@@ -219,7 +225,7 @@ if __name__ == "__main__":
         pbar.set_description(
             (
                 f"perceptual: {p_loss.item():.4f}; noise regularize: {n_loss.item():.4f};"
-                f" mse: {mse_loss.item():.4f}; lr: {lr:.4f}"
+                f" mse: {mse_loss.item():.4f}; identity: {identity_loss.item():.4f}"
             )
         )
 
