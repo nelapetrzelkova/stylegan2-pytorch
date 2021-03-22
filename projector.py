@@ -9,6 +9,9 @@ from torchvision import transforms
 from PIL import Image
 from tqdm import tqdm
 
+import face_alignment
+from landmark_augmentation import *
+
 import lpips
 from model import Generator
 import id_loss
@@ -115,6 +118,7 @@ if __name__ == "__main__":
         help="weight of the noise regularization",
     )
     parser.add_argument("--mse", type=float, default=0, help="weight of the mse loss")
+    parser.add_argument("--landmarks", type=float, default=0, help="weight of landmark loss")
     parser.add_argument(
         "--w_plus",
         action="store_true",
@@ -141,6 +145,12 @@ if __name__ == "__main__":
     )
 
     imgs = []
+    if args.landmarks > 0:
+        fa = face_alignment.FaceAlignment(face_alignment.LandmarksType._2D, device='cuda')
+        target_landmarks = np.zeros((len(args.files), 68, 2))
+        for i, imgfile in enumerate(args.files):
+            target_landmarks[i, :, :] = fa.get_landmarks(imgfile)[0]
+
 
     for imgfile in args.files:
         img = transform(Image.open(imgfile).convert("RGB"))
@@ -204,6 +214,12 @@ if __name__ == "__main__":
                 batch, channel, height // factor, factor, width // factor, factor
             )
             img_gen = img_gen.mean([3, 5])
+        if args.landmarks > 0:
+            fa_input = make_image(img_gen)
+            lm = np.array(fa.get_landmarks(fa_input[0, :, :, :]))
+            lm_loss = F.mse_loss(torch.tensor(lm), torch.tensor(target_landmarks))
+        else:
+            lm_loss = torch.tensor(0)
 
         p_loss = percept(img_gen, imgs).sum()
         n_loss = noise_regularize(noises)
@@ -211,7 +227,7 @@ if __name__ == "__main__":
         identity_loss, _, _ = identity(img_gen.cuda(), img.unsqueeze(0).cuda(), img.unsqueeze(0).cuda())
 
         loss = p_loss + args.noise_regularize * n_loss + args.mse * mse_loss + \
-               + identity_loss * args.identity
+               lm_loss * args.landmarks + identity_loss * args.identity
 
         optimizer.zero_grad()
         loss.backward()
@@ -225,7 +241,7 @@ if __name__ == "__main__":
         pbar.set_description(
             (
                 f"perceptual: {p_loss.item():.4f}; noise regularize: {n_loss.item():.4f};"
-                f" mse: {mse_loss.item():.4f}; identity: {identity_loss.item():.4f}"
+                f" mse: {mse_loss.item():.4f}; landmarks: {lm_loss.item():.4f}; identity: {identity_loss.item():.4f}"
             )
         )
 
