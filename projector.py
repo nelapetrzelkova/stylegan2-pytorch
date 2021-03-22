@@ -135,6 +135,7 @@ if __name__ == "__main__":
         help="allow to use distinct latent codes to each layers",
     )
     parser.add_argument("--identity", type=float, default=0.2, help="weight of identity loss")
+    parser.add_argument("--perceptual", type=float, default=1.0, help="weight of perceptual loss")
     parser.add_argument(
         "files", metavar="FILES", nargs="+", help="path to image files to be projected"
     )
@@ -240,7 +241,7 @@ if __name__ == "__main__":
         mse_loss = F.mse_loss(img_gen, imgs)
         identity_loss, _, _ = identity(img_gen.cuda(), img.unsqueeze(0).cuda(), img.unsqueeze(0).cuda())
 
-        loss = p_loss + args.noise_regularize * n_loss + args.mse * mse_loss + \
+        loss = args.perceptual * p_loss + args.noise_regularize * n_loss + args.mse * mse_loss + \
                lm_loss * args.landmarks + identity_loss * args.identity
 
         optimizer.zero_grad()
