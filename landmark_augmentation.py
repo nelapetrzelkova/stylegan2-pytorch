@@ -31,4 +31,4 @@ def smile(landmarks, fig_size, factor=1):
     y_shifts = np.array([-5,-5,-1,0,1,5,7,     5,3,0,-3,-5,   -7,-3,0,3,7,  -1,0,1]) * scale
     landmarks[idxs, 0] += y_shifts.astype(int)
     landmarks[idxs, 1] += x_shifts.astype(int)
-    return landmarks, idxs
+    return landmarks

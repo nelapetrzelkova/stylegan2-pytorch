@@ -10,6 +10,8 @@ from PIL import Image
 from tqdm import tqdm
 
 import face_alignment
+
+import landmark_augmentation
 from landmark_augmentation import *
 
 import lpips
@@ -120,6 +122,13 @@ if __name__ == "__main__":
     parser.add_argument("--mse", type=float, default=0, help="weight of the mse loss")
     parser.add_argument("--landmarks", type=float, default=0, help="weight of landmark loss")
     parser.add_argument(
+        "--landmark_augmentation",
+        type=str,
+        default=None,
+        choices=[None, 'smile', 'raise_left_eyebrow', 'raise_right_eyebrow', 'raise_both_eyebrows'],
+        help="type of augmentation we want to perform with landmarks"
+    )
+    parser.add_argument(
         "--w_plus",
         action="store_true",
         help="allow to use distinct latent codes to each layers",
@@ -149,7 +158,11 @@ if __name__ == "__main__":
         fa = face_alignment.FaceAlignment(face_alignment.LandmarksType._2D, device='cuda')
         target_landmarks = np.zeros((len(args.files), 68, 2))
         for i, imgfile in enumerate(args.files):
-            target_landmarks[i, :, :] = fa.get_landmarks(imgfile)[0]
+            landmarks = fa.get_landmarks(imgfile)[0]
+            if args.landmark_augmentation is not None:
+                transformation = getattr(landmark_augmentation, args.landmark_augmentation)
+                landmarks = transformation(landmarks, 256)
+            target_landmarks[i, :, :] = landmarks
 
 
     for imgfile in args.files:
