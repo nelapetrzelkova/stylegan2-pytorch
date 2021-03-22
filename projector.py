@@ -8,6 +8,7 @@ from torch.nn import functional as F
 from torchvision import transforms
 from PIL import Image
 from tqdm import tqdm
+from datetime import datetime
 
 import face_alignment
 
@@ -276,7 +277,9 @@ if __name__ == "__main__":
             "noise": noise_single,
         }
 
-        img_name = os.path.splitext(os.path.basename(input_name))[0] + "-project.png"
+        now = datetime.now()
+        dt_string = now.strftime("%d-%m-%Y_T%H-%M-%S")
+        img_name = "results/" + os.path.splitext(os.path.basename(input_name))[0] + dt_string + ".png"
         pil_img = Image.fromarray(img_ar[i])
         pil_img.save(img_name)
 
