@@ -130,6 +130,12 @@ if __name__ == "__main__":
         help="type of augmentation we want to perform with landmarks"
     )
     parser.add_argument(
+        "--landmark_scale",
+        type=float,
+        default=1,
+        help="scale for landmark augmentation"
+    )
+    parser.add_argument(
         "--w_plus",
         action="store_true",
         help="allow to use distinct latent codes to each layers",
@@ -163,7 +169,7 @@ if __name__ == "__main__":
             landmarks = fa.get_landmarks(imgfile)[0]
             if args.landmark_augmentation is not None:
                 transformation = getattr(landmark_augmentation, args.landmark_augmentation)
-                landmarks = transformation(landmarks, 256)
+                landmarks = transformation(landmarks, 256, args.landmark_scale)
             target_landmarks[i, :, :] = landmarks
 
 
