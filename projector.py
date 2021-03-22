@@ -9,6 +9,7 @@ from torchvision import transforms
 from PIL import Image
 from tqdm import tqdm
 from datetime import datetime
+import matplotlib.pyplot as plt
 
 import face_alignment
 
@@ -126,7 +127,7 @@ if __name__ == "__main__":
         "--landmark_augmentation",
         type=str,
         default=None,
-        choices=[None, 'smile', 'raise_left_eyebrow', 'raise_right_eyebrow', 'raise_both_eyebrows'],
+        choices=[None, 'smile', 'raise_left_eyebrow', 'raise_right_eyebrow', 'raise_eyebrows'],
         help="type of augmentation we want to perform with landmarks"
     )
     parser.add_argument(
@@ -135,6 +136,7 @@ if __name__ == "__main__":
         default=1,
         help="scale for landmark augmentation"
     )
+    parser.add_argument("--plot_target_landmarks", action="store_true", help="whether to plot and save target landmarks")
     parser.add_argument(
         "--w_plus",
         action="store_true",
@@ -169,7 +171,13 @@ if __name__ == "__main__":
             landmarks = fa.get_landmarks(imgfile)[0]
             if args.landmark_augmentation is not None:
                 transformation = getattr(landmark_augmentation, args.landmark_augmentation)
-                landmarks = transformation(landmarks, 256, args.landmark_scale)
+                landmarks = transformation(landmarks, 256, args.landmark_scale).astype(int)
+            if args.plot_target_landmarks is not None:
+                arr = np.zeros((256, 256))
+                arr[landmarks[:, 1], landmarks[:, 0]] = 1
+                plt.imshow(arr)
+                plt.margins(0,0)
+                plt.savefig('results/landmarks.png')
             target_landmarks[i, :, :] = landmarks
 
 
