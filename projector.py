@@ -168,7 +168,7 @@ if __name__ == "__main__":
         fa = face_alignment.FaceAlignment(face_alignment.LandmarksType._2D, device='cuda')
         target_landmarks = np.zeros((len(args.files), 68, 2))
         for i, imgfile in enumerate(args.files):
-            landmarks = fa.get_landmarks(imgfile)[0]
+            landmarks = fa.get_landmarks(imgfile)[0].astype(int)
             if args.landmark_augmentation is not None:
                 transformation = getattr(landmark_augmentation, args.landmark_augmentation)
                 landmarks = transformation(landmarks, 256, args.landmark_scale).astype(int)
@@ -224,6 +224,7 @@ if __name__ == "__main__":
 
     pbar = tqdm(range(args.step))
     latent_path = []
+    losses = np.zeros((4, len(pbar)))
 
     for i in pbar:
         t = i / args.step
@@ -255,6 +256,11 @@ if __name__ == "__main__":
         mse_loss = F.mse_loss(img_gen, imgs)
         identity_loss, _, _ = identity(img_gen.cuda(), img.unsqueeze(0).cuda(), img.unsqueeze(0).cuda())
 
+        losses[0, i] = p_loss * args.perceptual
+        losses[1, i] = mse_loss * args.mse
+        losses[2, i] = identity_loss * args.identity
+        losses[3, i] = lm_loss * args.landmarks
+
         loss = args.perceptual * p_loss + args.noise_regularize * n_loss + args.mse * mse_loss + \
                lm_loss * args.landmarks + identity_loss * args.identity
 
@@ -273,6 +279,18 @@ if __name__ == "__main__":
                 f" mse: {mse_loss.item():.4f}; landmarks: {lm_loss.item():.4f}; identity: {identity_loss.item():.4f}"
             )
         )
+
+    x = np.arange(len(pbar))
+    plt.figure(0)
+    plt.plot(x, losses[0, :], label="Perceptual loss")
+    plt.plot(x, losses[1, :], label="L2 loss")
+    plt.plot(x, losses[2, :], label="Identity loss")
+    plt.plot(x, losses[3, :], label="Landmark loss")
+    plt.xlabel("Iterations")
+    plt.ylabel("Losses")
+    plt.title("Progress of losses during optimization")
+    plt.legend()
+    plt.savefig('results/losses.png')
 
     img_gen, _ = g_ema([latent_path[-1]], input_is_latent=True, noise=noises)
 
