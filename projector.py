@@ -11,7 +11,8 @@ from tqdm import tqdm
 from datetime import datetime
 import matplotlib.pyplot as plt
 
-import face_alignment
+from landmarks import FaceAlignment
+from landmarks import LandmarksType
 
 import landmark_augmentation
 from landmark_augmentation import *
@@ -165,13 +166,13 @@ if __name__ == "__main__":
 
     imgs = []
     if args.landmarks > 0:
-        fa = face_alignment.FaceAlignment(face_alignment.LandmarksType._2D, device='cuda')
-        target_landmarks = np.zeros((len(args.files), 68, 2))
+        fa = FaceAlignment(LandmarksType._2D, device='cuda')
+        target_landmarks = torch.zeros((len(args.files), 68, 2))
         for i, imgfile in enumerate(args.files):
-            landmarks = fa.get_landmarks(imgfile)[0].astype(int)
+            landmarks = fa.get_landmarks(imgfile)[0]
             if args.landmark_augmentation is not None:
                 transformation = getattr(landmark_augmentation, args.landmark_augmentation)
-                landmarks = transformation(landmarks, 256, args.landmark_scale).astype(int)
+                landmarks = transformation(landmarks, 256, args.landmark_scale)
             if args.plot_target_landmarks is not None:
                 arr = np.zeros((256, 256))
                 arr[landmarks[:, 1], landmarks[:, 0]] = 1
@@ -245,8 +246,9 @@ if __name__ == "__main__":
             )
             img_gen = img_gen.mean([3, 5])
         if args.landmarks > 0:
-            fa_input = make_image(img_gen)
-            lm = np.array(fa.get_landmarks(fa_input[0, :, :, :]))
+            fa_input = img_gen.clamp_(min=-1, max=1).add(1).div_(2).mul(255).type(torch.uint8).permute(0, 2, 3, 1)
+            print(fa_input.shape)
+            lm = fa.get_landmarks(fa_input)
             lm_loss = F.mse_loss(torch.tensor(lm), torch.tensor(target_landmarks))
         else:
             lm_loss = torch.tensor(0)
@@ -255,6 +257,9 @@ if __name__ == "__main__":
         n_loss = noise_regularize(noises)
         mse_loss = F.mse_loss(img_gen, imgs)
         identity_loss, _, _ = identity(img_gen.cuda(), img.unsqueeze(0).cuda(), img.unsqueeze(0).cuda())
+
+        print(identity_loss.requires_grad)
+        print(lm_loss.requires_grad)
 
         losses[0, i] = p_loss * args.perceptual
         losses[1, i] = mse_loss * args.mse
