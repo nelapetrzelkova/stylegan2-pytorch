@@ -130,46 +130,27 @@ class FaceAlignment:
             print("Warning: No faces were detected.")
             return None
 
-        landmarks = torch.zeros(len(detected_faces), 68, 2)
         for i, d in enumerate(detected_faces):
-            center = torch.tensor(
-                [d[2] - (d[2] - d[0]) / 2.0, d[3] - (d[3] - d[1]) / 2.0])
-            center[1] = center[1] - (d[3] - d[1]) * 0.12
-            scale = (d[2] - d[0] + d[3] - d[1]) / self.face_detector.reference_scale
-
-            inp = crop(image, center, scale)
-            inp = torch.from_numpy(inp.transpose(
-                (2, 0, 1))).float()
+            inp = image
+            inp = inp.squeeze().permute((2, 0, 1)).type(torch.FloatTensor)
 
             inp = inp.to(self.device)
             inp.div_(255.0).unsqueeze_(0)
-
-            out = self.face_alignment_net(inp).detach()
+            out = self.face_alignment_net(inp)
             if self.flip_input:
-                out += flip(self.face_alignment_net(flip(inp)).detach(), is_label=True)
-            # out = out.cpu().numpy()
+                out += flip(self.face_alignment_net(flip(inp)), is_label=True)
 
-            pts, pts_img = get_preds_fromhm(out, center, scale)
-            pts, pts_img = pts.view(68, 2) * 4, pts_img.view(68, 2)
+            my_landmarks = np.zeros((68, 2))
+            heatmaps = out.squeeze()
+            for i, lm in enumerate(heatmaps):
+                coords = np.unravel_index(np.argmax(lm.detach().cpu().numpy()), (64,64))
+                my_landmarks[i, 0] = coords[1]
+                my_landmarks[i, 1] = coords[0]
+            my_landmarks *= 4
+            heatmaps = out
 
-            if self.landmarks_type == LandmarksType._3D:
-                heatmaps = np.zeros((68, 256, 256), dtype=np.float32)
-                for i in range(68):
-                    if pts[i, 0] > 0 and pts[i, 1] > 0:
-                        heatmaps[i] = draw_gaussian(
-                            heatmaps[i], pts[i], 2)
-                heatmaps = torch.from_numpy(
-                    heatmaps).unsqueeze_(0)
 
-                heatmaps = heatmaps.to(self.device)
-                depth_pred = self.depth_prediciton_net(
-                    torch.cat((inp, heatmaps), 1)).data.cpu().view(68, 1)
-                pts_img = torch.cat(
-                    (pts_img, depth_pred * (1.0 / (256.0 / (200.0 * scale)))), 1)
-
-            landmarks[i, :, :] = pts_img
-
-        return landmarks.type(torch.IntTensor)
+        return my_landmarks, heatmaps.squeeze()
 
     # @torch.no_grad()
     def get_landmarks_from_batch(self, image_batch, detected_faces=None):

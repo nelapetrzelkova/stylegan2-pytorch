@@ -166,21 +166,31 @@ if __name__ == "__main__":
 
     imgs = []
     if args.landmarks > 0:
+        bbox = [[0,0,255,255]]
         fa = FaceAlignment(LandmarksType._2D, device='cuda')
         target_landmarks = torch.zeros((len(args.files), 68, 2))
         for i, imgfile in enumerate(args.files):
-            landmarks = fa.get_landmarks(imgfile)[0]
+            landmarks, heatmaps = fa.get_landmarks(imgfile, bbox)
             if args.landmark_augmentation is not None:
                 transformation = getattr(landmark_augmentation, args.landmark_augmentation)
                 landmarks = transformation(landmarks, 256, args.landmark_scale)
+                hm_transformation = getattr(landmark_augmentation, args.landmark_augmentation + '_hm')
+                target_heatmaps = hm_transformation(heatmaps, args.landmark_scale)*100
             if args.plot_target_landmarks is not None:
+                my_landmarks = np.zeros((68, 2))
+                for j, lm in enumerate(target_heatmaps):
+                    coords = np.unravel_index(np.argmax(lm.detach().cpu().numpy()), (64, 64))
+                    my_landmarks[j, 0] = coords[1]
+                    my_landmarks[j, 1] = coords[0]
+                my_landmarks *= 4
+                landmarks = my_landmarks
                 arr = np.zeros((256, 256))
-                arr[landmarks[:, 1], landmarks[:, 0]] = 1
-                plt.imshow(arr)
-                plt.margins(0,0)
+                plt.imshow(Image.open(imgfile))
+                plt.scatter(landmarks[:, 0], landmarks[:, 1], 3, c='greenyellow')
+                plt.tight_layout()
                 plt.savefig('results/landmarks.png')
-            target_landmarks[i, :, :] = landmarks
-
+            print(target_landmarks[i, :, :].shape, landmarks.shape)
+            target_landmarks[i, :, :] = torch.from_numpy(landmarks)
 
     for imgfile in args.files:
         img = transform(Image.open(imgfile).convert("RGB"))
@@ -227,8 +237,8 @@ if __name__ == "__main__":
     latent_path = []
     losses = np.zeros((4, len(pbar)))
 
-    for i in pbar:
-        t = i / args.step
+    for j in pbar:
+        t = j / args.step
         lr = get_lr(t, args.lr)
         optimizer.param_groups[0]["lr"] = lr
         noise_strength = latent_std * args.noise * max(0, 1 - t / args.noise_ramp) ** 2
@@ -246,10 +256,9 @@ if __name__ == "__main__":
             )
             img_gen = img_gen.mean([3, 5])
         if args.landmarks > 0:
-            fa_input = img_gen.clamp_(min=-1, max=1).add(1).div_(2).mul(255).type(torch.uint8).permute(0, 2, 3, 1)
-            print(fa_input.shape)
-            lm = fa.get_landmarks(fa_input)
-            lm_loss = F.mse_loss(torch.tensor(lm), torch.tensor(target_landmarks))
+            fa_input = img_gen.clamp_(min=-1, max=1).add(1).div_(2).mul(255).permute(0, 2, 3, 1).requires_grad_(True)
+            lm, hm = fa.get_landmarks(fa_input, bbox)
+            lm_loss = F.mse_loss(hm*100, target_heatmaps)
         else:
             lm_loss = torch.tensor(0)
 
@@ -258,24 +267,21 @@ if __name__ == "__main__":
         mse_loss = F.mse_loss(img_gen, imgs)
         identity_loss, _, _ = identity(img_gen.cuda(), img.unsqueeze(0).cuda(), img.unsqueeze(0).cuda())
 
-        print(identity_loss.requires_grad)
-        print(lm_loss.requires_grad)
-
-        losses[0, i] = p_loss * args.perceptual
-        losses[1, i] = mse_loss * args.mse
-        losses[2, i] = identity_loss * args.identity
-        losses[3, i] = lm_loss * args.landmarks
+        losses[0, j] = p_loss * args.perceptual
+        losses[1, j] = mse_loss * args.mse
+        losses[2, j] = identity_loss * args.identity
+        losses[3, j] = lm_loss * args.landmarks
 
         loss = args.perceptual * p_loss + args.noise_regularize * n_loss + args.mse * mse_loss + \
                lm_loss * args.landmarks + identity_loss * args.identity
 
         optimizer.zero_grad()
-        loss.backward()
+        loss.backward(retain_graph=True)
         optimizer.step()
 
         noise_normalize_(noises)
 
-        if (i + 1) % 100 == 0:
+        if (j + 1) % 100 == 0:
             latent_path.append(latent_in.detach().clone())
 
         pbar.set_description(
@@ -304,21 +310,21 @@ if __name__ == "__main__":
     img_ar = make_image(img_gen)
 
     result_file = {}
-    for i, input_name in enumerate(args.files):
+    for j, input_name in enumerate(args.files):
         noise_single = []
         for noise in noises:
-            noise_single.append(noise[i : i + 1])
+            noise_single.append(noise[j: j + 1])
 
         result_file[input_name] = {
-            "img": img_gen[i],
-            "latent": latent_in[i],
+            "img": img_gen[j],
+            "latent": latent_in[j],
             "noise": noise_single,
         }
 
         now = datetime.now()
         dt_string = now.strftime("%d-%m-%Y_T%H-%M-%S")
         img_name = "results/" + os.path.splitext(os.path.basename(input_name))[0] + dt_string + ".png"
-        pil_img = Image.fromarray(img_ar[i])
+        pil_img = Image.fromarray(img_ar[j])
         pil_img.save(img_name)
 
     torch.save(result_file, filename)

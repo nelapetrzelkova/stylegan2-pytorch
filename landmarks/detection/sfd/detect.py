@@ -29,7 +29,7 @@ def batch_detect(net, img_batch, device):
 
     if 'cuda' in device:
         torch.backends.cudnn.benchmark = True
-    print(img_batch.shape)
+
     batch_size = img_batch.size(0)
     img_batch = img_batch.to(device, dtype=torch.float32)
 
