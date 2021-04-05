@@ -14,8 +14,8 @@ import matplotlib.pyplot as plt
 from landmarks import FaceAlignment
 from landmarks import LandmarksType
 
-import landmark_augmentation
-from landmark_augmentation import *
+import landmark_utils
+from landmark_utils import *
 
 import lpips
 from model import Generator
@@ -172,9 +172,9 @@ if __name__ == "__main__":
         for i, imgfile in enumerate(args.files):
             landmarks, heatmaps = fa.get_landmarks(imgfile, bbox)
             if args.landmark_augmentation is not None:
-                transformation = getattr(landmark_augmentation, args.landmark_augmentation)
+                transformation = getattr(landmark_utils, args.landmark_augmentation)
                 landmarks = transformation(landmarks, 256, args.landmark_scale)
-                hm_transformation = getattr(landmark_augmentation, args.landmark_augmentation + '_hm')
+                hm_transformation = getattr(landmark_utils, args.landmark_augmentation + '_hm')
                 target_heatmaps = hm_transformation(heatmaps, args.landmark_scale)*100
             if args.plot_target_landmarks is not None:
                 my_landmarks = np.zeros((68, 2))
